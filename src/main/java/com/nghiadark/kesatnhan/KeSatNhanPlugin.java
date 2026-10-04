@@ -1,19 +1,20 @@
 package com.nghiadark.kesatnhan;
 
-import com.nghiadark.kesatnhan.arena.ArenaManager;
 import com.nghiadark.kesatnhan.command.KsnCommand;
 import com.nghiadark.kesatnhan.game.GameManager;
 import com.nghiadark.kesatnhan.gui.JoinGui;
 import com.nghiadark.kesatnhan.listener.GameListener;
 import com.nghiadark.kesatnhan.listener.GuiListener;
-import com.nghiadark.kesatnhan.listener.ProtectListener;
+import com.nghiadark.kesatnhan.map.MapManager;
+import com.nghiadark.kesatnhan.room.RoomManager;
 import com.nghiadark.kesatnhan.util.Msg;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class KeSatNhanPlugin extends JavaPlugin {
 
   private Msg msg;
-  private ArenaManager arenas;
+  private RoomManager rooms;
+  private MapManager maps;
   private GameManager game;
   private JoinGui joinGui;
 
@@ -21,7 +22,8 @@ public class KeSatNhanPlugin extends JavaPlugin {
   public void onEnable() {
     saveDefaultConfig();
     this.msg = new Msg(this);
-    this.arenas = new ArenaManager(this);
+    this.rooms = new RoomManager(this);
+    this.maps = new MapManager(this);
     this.game = new GameManager(this);
     this.joinGui = new JoinGui(this);
 
@@ -31,18 +33,19 @@ public class KeSatNhanPlugin extends JavaPlugin {
 
     getServer().getPluginManager().registerEvents(new GameListener(this), this);
     getServer().getPluginManager().registerEvents(new GuiListener(this), this);
-    getServer().getPluginManager().registerEvents(new ProtectListener(this), this);
 
     getLogger().info("KeSatNhan-core 1.0.0 by NghiaDark enabled.");
   }
 
   @Override
   public void onDisable() {
-    if (arenas != null) arenas.save();
+    if (rooms != null) rooms.save();
+    if (maps != null) { maps.save(); maps.cleanupAll(); }
   }
 
   public Msg msg() { return msg; }
-  public ArenaManager arenas() { return arenas; }
+  public RoomManager rooms() { return rooms; }
+  public MapManager maps() { return maps; }
   public GameManager game() { return game; }
   public JoinGui gui() { return joinGui; }
 }

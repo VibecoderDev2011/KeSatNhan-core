@@ -1,10 +1,11 @@
 package com.nghiadark.kesatnhan.game;
 
 import com.nghiadark.kesatnhan.KeSatNhanPlugin;
-import com.nghiadark.kesatnhan.arena.Arena;
-import com.nghiadark.kesatnhan.arena.ArenaState;
+import com.nghiadark.kesatnhan.map.GameMap;
+import com.nghiadark.kesatnhan.map.MatchMap;
+import com.nghiadark.kesatnhan.room.Room;
+import com.nghiadark.kesatnhan.room.RoomState;
 import com.nghiadark.kesatnhan.util.Items;
-import com.nghiadark.kesatnhan.util.SpawnUtil;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -21,114 +22,135 @@ public class GameManager {
   public int min() { return plugin.getConfig().getInt("min-players", 8); }
   public int max() { return plugin.getConfig().getInt("max-players", 10); }
   public int countdownSec() { return plugin.getConfig().getInt("countdown-seconds", 30); }
-
-  public Set<Material> danger() {
-    Set<Material> s = new HashSet<>();
-    for (String n : plugin.getConfig().getStringList("dangerous-blocks")) {
-      try { s.add(Material.valueOf(n)); } catch (Exception ignored) {}
-    }
-    return s;
-  }
+  public int forceMin() { return plugin.getConfig().getInt("force-start-min", 2); }
 
   // ---------- join / leave ----------
-  public boolean join(Player p, Arena a) {
-    if (a.state() == ArenaState.PLAYING || a.state() == ArenaState.ENDING) {
+  public boolean join(Player p, Room r) {
+    if (r.state() == RoomState.PLAYING || r.state() == RoomState.ENDING) {
       p.sendMessage(plugin.msg().get("join-ingame")); return false;
     }
-    if (a.players().size() >= max()) { p.sendMessage(plugin.msg().get("join-full")); return false; }
-    Arena old = plugin.arenas().byPlayer(p.getUniqueId());
-    if (old != null && old != a) leave(p, old);
-    if (a.players().contains(p.getUniqueId())) return true;
-    a.players().add(p.getUniqueId());
-    if (a.waiting() != null) p.teleport(a.waiting());
+    if (r.players().size() >= max()) { p.sendMessage(plugin.msg().get("join-full")); return false; }
+    Room old = plugin.rooms().byPlayer(p.getUniqueId());
+    if (old != null && old != r) leave(p, old);
+    if (r.players().contains(p.getUniqueId())) return true;
+    r.players().add(p.getUniqueId());
+    if (r.waiting() != null) p.teleport(r.waiting());
     p.setGameMode(GameMode.ADVENTURE);
     p.getInventory().clear();
-    p.sendMessage(plugin.msg().get("join-ok", Map.of("arena", a.id(), "count", String.valueOf(a.players().size()))));
-    broadcast(a, plugin.msg().get("join-ok", Map.of("arena", a.id(), "count", String.valueOf(a.players().size()))));
-    maybeStartCountdown(a);
+    String m = plugin.msg().get("join-ok", Map.of("room", r.id(), "count", String.valueOf(r.players().size())));
+    p.sendMessage(m);
+    broadcast(r, m);
+    maybeStartCountdown(r);
     return true;
   }
 
-  public void leave(Player p, Arena a) {
-    a.players().remove(p.getUniqueId());
-    a.spectators().remove(p.getUniqueId());
-    a.roles().remove(p.getUniqueId());
+  public void leave(Player p, Room r) {
+    r.players().remove(p.getUniqueId());
+    r.spectators().remove(p.getUniqueId());
+    r.roles().remove(p.getUniqueId());
     p.getInventory().clear();
     p.setGameMode(GameMode.SURVIVAL);
-    Location lobby = plugin.arenas().lobby();
+    Location lobby = plugin.rooms().lobby();
     if (lobby != null) p.teleport(lobby);
     p.sendMessage(plugin.msg().get("leave-ok"));
-    if (a.state() == ArenaState.PLAYING) checkWin(a);
-    else if (a.players().size() < min()) cancelCountdown(a, true);
+    if (r.state() == RoomState.PLAYING) checkWin(r);
+    else if (r.players().size() < min()) cancelCountdown(r, true);
   }
 
-  public void broadcast(Arena a, String message) {
-    for (UUID id : a.players()) {
+  public void broadcast(Room r, String message) {
+    for (UUID id : r.players()) {
       Player p = Bukkit.getPlayer(id);
       if (p != null) p.sendMessage(message);
     }
   }
 
   // ---------- countdown ----------
-  public void maybeStartCountdown(Arena a) {
-    if (a.state() != ArenaState.WAITING) {
-      // du 10 nguoi -> rut ngan
-      if (a.state() == ArenaState.STARTING && a.players().size() >= max()) {
-        if (a.countdown() > plugin.getConfig().getInt("full-start-short-seconds", 5))
-          a.countdown(plugin.getConfig().getInt("full-start-short-seconds", 5));
+  public void maybeStartCountdown(Room r) {
+    if (r.state() != RoomState.WAITING) {
+      if (r.state() == RoomState.STARTING && r.players().size() >= max()) {
+        if (r.countdown() > plugin.getConfig().getInt("full-start-short-seconds", 5))
+          r.countdown(plugin.getConfig().getInt("full-start-short-seconds", 5));
       }
       return;
     }
-    if (a.players().size() < min()) return;
-    a.state(ArenaState.STARTING);
-    a.countdown(countdownSec());
-    cancelTask(a);
+    if (r.players().size() < min()) return;
+    r.state(RoomState.STARTING);
+    r.countdown(countdownSec());
+    cancelTask(r);
     BukkitTask t = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-      if (a.players().size() < min()) { cancelCountdown(a, true); return; }
-      if (a.players().size() >= max() && a.countdown() > plugin.getConfig().getInt("full-start-short-seconds", 5))
-        a.countdown(plugin.getConfig().getInt("full-start-short-seconds", 5));
-      a.countdown(a.countdown() - 1);
-      if (a.countdown() <= 0) { start(a); return; }
-      if (a.countdown() % 10 == 0 || a.countdown() <= 5)
-        broadcast(a, plugin.msg().get("game-countdown", Map.of("count", String.valueOf(a.players().size()), "sec", String.valueOf(a.countdown()))));
+      if (r.players().size() < min()) { cancelCountdown(r, true); return; }
+      if (r.players().size() >= max() && r.countdown() > plugin.getConfig().getInt("full-start-short-seconds", 5))
+        r.countdown(plugin.getConfig().getInt("full-start-short-seconds", 5));
+      r.countdown(r.countdown() - 1);
+      if (r.countdown() <= 0) { beginMatch(r, false); return; }
+      if (r.countdown() % 10 == 0 || r.countdown() <= 5)
+        broadcast(r, plugin.msg().get("game-countdown", Map.of("count", String.valueOf(r.players().size()), "sec", String.valueOf(r.countdown()))));
     }, 20L, 20L);
-    countdownTasks.put(a.id(), t);
+    countdownTasks.put(r.id(), t);
   }
 
-  public void cancelCountdown(Arena a, boolean notify) {
-    cancelTask(a);
-    if (a.state() == ArenaState.STARTING) {
-      a.state(ArenaState.WAITING);
-      a.countdown(-1);
-      if (notify) broadcast(a, plugin.msg().get("game-cancel"));
+  public void cancelCountdown(Room r, boolean notify) {
+    cancelTask(r);
+    if (r.state() == RoomState.STARTING) {
+      r.state(RoomState.WAITING);
+      r.countdown(-1);
+      if (notify) broadcast(r, plugin.msg().get("game-cancel"));
     }
   }
 
-  private void cancelTask(Arena a) {
-    BukkitTask t = countdownTasks.remove(a.id());
+  private void cancelTask(Room r) {
+    BukkitTask t = countdownTasks.remove(r.id());
     if (t != null) t.cancel();
   }
 
-  // ---------- start / end ----------
-  public void start(Arena a) {
-    cancelTask(a);
-    if (!a.hasRegion() || a.waiting() == null) {
-      broadcast(a, plugin.msg().get("need-both-pos"));
-      a.state(ArenaState.WAITING);
+  // ---------- match flow: random map -> clone neu thieu ----------
+  public void beginMatch(Room r, boolean forced) {
+    cancelTask(r);
+    int need = forced ? forceMin() : min();
+    if (r.players().size() < need) {
+      r.state(RoomState.WAITING);
       return;
     }
-    List<Location> spawns = SpawnUtil.scatter(a, a.players().size(), danger(), plugin.getConfig().getInt("min-scatter-distance", 5));
-    if (spawns.size() < a.players().size()) {
-      // fallback: dung waiting neu khong du diem an toan
-      while (spawns.size() < a.players().size()) spawns.add(a.waiting());
+    int n = r.players().size();
+    GameMap free = plugin.maps().pickFree(n);
+    if (free != null) {
+      MatchMap m = plugin.maps().buildDirect(free);
+      if (m != null) { startOnMap(r, m); return; }
     }
-    // chia role: 1 sat nhan + 1 canh sat
-    List<UUID> shuffled = new ArrayList<>(a.players());
+    // het map ranh -> clone map tam
+    GameMap src = plugin.maps().pickForClone(n);
+    if (src == null) {
+      broadcast(r, plugin.msg().get("no-map"));
+      r.state(RoomState.WAITING);
+      return;
+    }
+    broadcast(r, plugin.msg().get("preparing-map", Map.of("map", src.id())));
+    plugin.maps().cloneAsync(src, m -> {
+      if (m == null) {
+        broadcast(r, plugin.msg().get("clone-fail"));
+        r.state(RoomState.WAITING);
+        return;
+      }
+      if (r.state() != RoomState.STARTING || r.players().size() < need) {
+        // player out het trong luc clone -> huy + xoa clone
+        plugin.maps().release(m);
+        r.state(RoomState.WAITING);
+        return;
+      }
+      startOnMap(r, m);
+    });
+  }
+
+  private void startOnMap(Room r, MatchMap m) {
+    List<Location> spawns = new ArrayList<>(m.spawns());
+    Collections.shuffle(spawns);
+    while (spawns.size() < r.players().size()) spawns.add(spawns.get(0));
+    List<UUID> shuffled = new ArrayList<>(r.players());
     Collections.shuffle(shuffled);
-    a.roles().clear(); a.hits().clear(); a.hitTime().clear(); a.spectators().clear();
-    a.roles().put(shuffled.get(0), Role.MURDERER);
-    if (shuffled.size() > 1) a.roles().put(shuffled.get(1), Role.SHERIFF);
-    for (int i = 2; i < shuffled.size(); i++) a.roles().put(shuffled.get(i), Role.INNOCENT);
+    r.roles().clear(); r.hits().clear(); r.hitTime().clear(); r.spectators().clear();
+    r.roles().put(shuffled.get(0), Role.MURDERER);
+    if (shuffled.size() > 1) r.roles().put(shuffled.get(1), Role.SHERIFF);
+    for (int i = 2; i < shuffled.size(); i++) r.roles().put(shuffled.get(i), Role.INNOCENT);
 
     int i = 0;
     for (UUID id : shuffled) {
@@ -138,11 +160,11 @@ public class GameManager {
       p.setGameMode(GameMode.ADVENTURE);
       p.getInventory().clear();
       p.setHealth(20); p.setFoodLevel(20);
-      Role r = a.roles().get(id);
-      if (r == Role.MURDERER) {
+      Role role = r.roles().get(id);
+      if (role == Role.MURDERER) {
         p.getInventory().addItem(Items.murderSword());
         p.sendMessage(plugin.msg().get("role-murderer"));
-      } else if (r == Role.SHERIFF) {
+      } else if (role == Role.SHERIFF) {
         p.getInventory().addItem(Items.sheriffBow());
         p.getInventory().addItem(new ItemStack(Material.ARROW, 1));
         p.sendMessage(plugin.msg().get("role-sheriff"));
@@ -151,63 +173,65 @@ public class GameManager {
       }
       p.sendTitle(plugin.msg().get("game-start"), "", 10, 40, 10);
     }
-    a.state(ArenaState.PLAYING);
-    broadcast(a, plugin.msg().get("game-start"));
+    r.matchMap(m);
+    r.state(RoomState.PLAYING);
+    broadcast(r, plugin.msg().get("game-start"));
+    broadcast(r, plugin.msg().get("map-picked", Map.of("map", m.id())));
   }
 
-  public void forceStart(Arena a) {
-    if (a.state() == ArenaState.PLAYING) return;
-    a.state(ArenaState.WAITING);
-    start(a);
+  public void forceStart(Room r) {
+    if (r.state() == RoomState.PLAYING || r.state() == RoomState.ENDING) return;
+    r.state(RoomState.STARTING);
+    beginMatch(r, true);
   }
 
-  public void end(Arena a, String endMessage) {
-    cancelTask(a);
-    a.state(ArenaState.ENDING);
-    if (endMessage != null) broadcast(a, endMessage);
-    for (UUID id : new ArrayList<>(a.players())) {
+  public void end(Room r, String endMessage) {
+    cancelTask(r);
+    r.state(RoomState.ENDING);
+    if (endMessage != null) broadcast(r, endMessage);
+    for (UUID id : new ArrayList<>(r.players())) {
       Player p = Bukkit.getPlayer(id);
       if (p == null) continue;
       p.getInventory().clear();
       p.setGameMode(GameMode.SURVIVAL);
-      Location lobby = plugin.arenas().lobby();
+      Location lobby = plugin.rooms().lobby();
       if (lobby != null) p.teleport(lobby);
     }
+    MatchMap m = r.matchMap();
+    r.matchMap(null);
     int delay = plugin.getConfig().getInt("end-delay-seconds", 10);
     Bukkit.getScheduler().runTaskLater(plugin, () -> {
-      a.players().clear(); a.spectators().clear(); a.roles().clear(); a.hits().clear(); a.hitTime().clear();
-      a.state(ArenaState.WAITING);
+      r.players().clear(); r.spectators().clear(); r.roles().clear(); r.hits().clear(); r.hitTime().clear();
+      r.state(RoomState.WAITING);
+      plugin.maps().release(m);
     }, delay * 20L);
   }
 
-  /** Goi sau moi cai chet / roi game de kiem tra thang thua. */
-  public void checkWin(Arena a) {
-    if (a.state() != ArenaState.PLAYING) return;
+  public void checkWin(Room r) {
+    if (r.state() != RoomState.PLAYING) return;
     UUID murderer = null;
     int aliveVillagers = 0;
-    for (UUID id : a.players()) {
-      if (a.spectators().contains(id)) continue;
-      Role r = a.roles().get(id);
-      if (r == Role.MURDERER) murderer = id;
+    for (UUID id : r.players()) {
+      if (r.spectators().contains(id)) continue;
+      Role role = r.roles().get(id);
+      if (role == Role.MURDERER) murderer = id;
       else aliveVillagers++;
     }
-    if (murderer == null) { // sat nhan chet/roi -> dan thang
-      end(a, plugin.msg().get("villagers-win"));
-    } else if (aliveVillagers == 0) { // het dan + canh sat -> sat nhan thang
+    if (murderer == null) {
+      end(r, plugin.msg().get("villagers-win"));
+    } else if (aliveVillagers == 0) {
       Player m = Bukkit.getPlayer(murderer);
       if (m != null) m.sendTitle(plugin.msg().get("murderer-win"), "", 10, 60, 10);
-      end(a, plugin.msg().get("murderer-win"));
+      end(r, plugin.msg().get("murderer-win"));
     }
   }
 
-  /** Bien nan nhan thanh khan gia quan sat tran dau. */
-  public void toSpectator(Arena a, Player victim) {
-    a.spectators().add(victim.getUniqueId());
+  public void toSpectator(Room r, Player victim) {
+    r.spectators().add(victim.getUniqueId());
     victim.getInventory().clear();
     victim.setGameMode(GameMode.SPECTATOR);
-    Location s = a.spec() != null ? a.spec() : a.waiting();
+    Location s = (r.matchMap() != null && r.matchMap().spec() != null) ? r.matchMap().spec() : r.waiting();
     if (s != null) victim.teleport(s);
-    // cap sao Nether de ve sanh nhanh (slot 8 khi SPECTATOR van giu duoc item hien thi)
     victim.getInventory().setItem(8, Items.lobbyStar());
   }
 }

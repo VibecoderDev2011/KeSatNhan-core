@@ -1,8 +1,8 @@
 package com.nghiadark.kesatnhan.listener;
 
 import com.nghiadark.kesatnhan.KeSatNhanPlugin;
-import com.nghiadark.kesatnhan.arena.Arena;
 import com.nghiadark.kesatnhan.gui.JoinGui;
+import com.nghiadark.kesatnhan.room.Room;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -25,20 +25,20 @@ public class GuiListener implements Listener {
     if (slot == 45) { plugin.gui().open(p, plugin.gui().page(p) - 1); return; }
     if (slot == 53) { plugin.gui().open(p, plugin.gui().page(p) + 1); return; }
     if (slot == 48) { p.closeInventory(); return; }
-    if (slot == 49) { // tham gia nhanh: phong cho dong nhat
-      Arena best = plugin.arenas().bestWaiting(plugin.game().max());
+    if (slot == 49) {
+      Room best = plugin.rooms().bestWaiting(plugin.game().max());
       if (best == null) { p.sendMessage(plugin.msg().get("no-waiting-room")); return; }
       p.closeInventory();
       if (plugin.game().join(p, best))
-        p.sendMessage(plugin.msg().get("quick-join-ok", java.util.Map.of("arena", best.id())));
+        p.sendMessage(plugin.msg().get("quick-join-ok", java.util.Map.of("room", best.id())));
       return;
     }
     if (t == Material.GRAY_BED || t == Material.YELLOW_BED || t == Material.RED_BED) {
       String name = e.getCurrentItem().getItemMeta().getDisplayName().replaceAll("§.", "");
-      Arena ar = plugin.arenas().get(name.toLowerCase());
-      if (ar == null) return;
+      Room r = plugin.rooms().get(name.toLowerCase());
+      if (r == null) return;
       p.closeInventory();
-      plugin.game().join(p, ar);
+      plugin.game().join(p, r);
     }
   }
 

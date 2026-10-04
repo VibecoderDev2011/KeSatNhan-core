@@ -1,10 +1,9 @@
 package com.nghiadark.kesatnhan.gui;
 
 import com.nghiadark.kesatnhan.KeSatNhanPlugin;
-import com.nghiadark.kesatnhan.arena.Arena;
-import com.nghiadark.kesatnhan.arena.ArenaState;
+import com.nghiadark.kesatnhan.room.Room;
+import com.nghiadark.kesatnhan.room.RoomState;
 import com.nghiadark.kesatnhan.util.Items;
-import com.nghiadark.kesatnhan.util.Msg;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -27,7 +26,7 @@ public class JoinGui implements InventoryHolder {
 
   public void open(Player p, int page) {
     pages.put(p.getUniqueId(), page);
-    List<Arena> sorted = sorted();
+    List<Room> sorted = sorted();
     int perPage = 28;
     int maxPage = Math.max(0, (sorted.size() - 1) / perPage);
     page = Math.max(0, Math.min(page, maxPage));
@@ -43,7 +42,6 @@ public class JoinGui implements InventoryHolder {
     for (int i = 0; i < perPage && from + i < sorted.size(); i++) {
       inv.setItem(inner[i], bed(sorted.get(from + i)));
     }
-    // dieu huong + join nhanh
     inv.setItem(45, named(Material.ARROW, ChatColor.YELLOW + "Trang trước"));
     inv.setItem(48, named(Material.BARRIER, ChatColor.RED + "Đóng"));
     inv.setItem(49, quickStar());
@@ -54,43 +52,44 @@ public class JoinGui implements InventoryHolder {
   public void open(Player p) { open(p, pages.getOrDefault(p.getUniqueId(), 0)); }
   public int page(Player p) { return pages.getOrDefault(p.getUniqueId(), 0); }
 
-  private List<Arena> sorted() {
-    List<Arena> yellow = new ArrayList<>(), gray = new ArrayList<>(), red = new ArrayList<>();
-    for (Arena a : plugin.arenas().all()) {
-      if (a.state() == ArenaState.PLAYING || a.state() == ArenaState.ENDING) red.add(a);
-      else if (!a.players().isEmpty()) yellow.add(a);
-      else gray.add(a);
+  private List<Room> sorted() {
+    List<Room> yellow = new ArrayList<>(), gray = new ArrayList<>(), red = new ArrayList<>();
+    for (Room r : plugin.rooms().all()) {
+      if (r.state() == RoomState.PLAYING || r.state() == RoomState.ENDING) red.add(r);
+      else if (!r.players().isEmpty()) yellow.add(r);
+      else gray.add(r);
     }
-    yellow.sort(Comparator.comparingInt(a -> -a.players().size()));
-    List<Arena> out = new ArrayList<>();
+    yellow.sort(Comparator.comparingInt(r -> -r.players().size()));
+    List<Room> out = new ArrayList<>();
     out.addAll(yellow); out.addAll(gray); out.addAll(red);
     return out;
   }
 
-  private ItemStack bed(Arena a) {
+  private ItemStack bed(Room r) {
     Material m;
     String status;
     int max = plugin.game().max();
-    if (a.state() == ArenaState.PLAYING || a.state() == ArenaState.ENDING) {
+    if (r.state() == RoomState.PLAYING || r.state() == RoomState.ENDING) {
       m = Material.RED_BED; status = ChatColor.RED + "Đang trong trận đấu";
-    } else if (!a.players().isEmpty()) {
+    } else if (!r.players().isEmpty()) {
       m = Material.YELLOW_BED; status = ChatColor.YELLOW + "Sẵn sàng";
     } else {
       m = Material.GRAY_BED; status = ChatColor.GRAY + "Chưa bắt đầu";
     }
     ItemStack it = new ItemStack(m);
     ItemMeta meta = it.getItemMeta();
-    meta.setDisplayName(ChatColor.GREEN + a.id());
+    meta.setDisplayName(ChatColor.GREEN + r.id());
     meta.setLore(List.of(
         ChatColor.GRAY + "Trạng thái: " + status,
-        ChatColor.GRAY + "Người chơi: " + ChatColor.WHITE + a.players().size() + "/" + max,
+        ChatColor.GRAY + "Người chơi: " + ChatColor.WHITE + r.players().size() + "/" + max,
+        ChatColor.GRAY + "Map: " + ChatColor.WHITE + "ngẫu nhiên (" + plugin.maps().all().size() + " mẫu sẵn sàng)",
         ChatColor.DARK_GRAY + "Click để vào phòng"));
     it.setItemMeta(meta);
     return it;
   }
 
   private ItemStack quickStar() {
-    Arena best = plugin.arenas().bestWaiting(plugin.game().max());
+    Room best = plugin.rooms().bestWaiting(plugin.game().max());
     ItemStack it = new ItemStack(Material.NETHER_STAR);
     ItemMeta meta = it.getItemMeta();
     meta.setDisplayName(ChatColor.AQUA + "Tham gia nhanh");
