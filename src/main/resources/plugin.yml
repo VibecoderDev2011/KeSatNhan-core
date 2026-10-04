@@ -1,0 +1,15 @@
+name: KeSatNhan
+version: 1.0.0
+main: com.nghiadark.kesatnhan.KeSatNhanPlugin
+api-version: '1.21'
+author: NghiaDark
+description: Plugin KeSatNhan duoc phat trien boi Nghiadark
+commands:
+  ksn:
+    description: Lenh chinh KeSatNhan
+    usage: /ksn <help|join|leave|list|lista|...>
+    permission-message: Ban khong co quyen!
+permissions:
+  kesatnhan.admin:
+    description: Quyen admin KeSatNhan
+    default: op

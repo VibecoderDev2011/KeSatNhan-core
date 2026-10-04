@@ -1,0 +1,22 @@
+# Cấu hình chung KẻSátNhân
+min-players: 8
+max-players: 10
+countdown-seconds: 30
+full-start-short-seconds: 5
+hit-reset-seconds: 10
+end-delay-seconds: 10
+min-scatter-distance: 5
+# Block nguy hiểm: spawn sẽ tránh các khối này (kể cả chân bị AIR lơ lửng sẽ tự tìm lại)
+dangerous-blocks:
+  - LAVA
+  - WATER
+  - FIRE
+  - SOUL_FIRE
+  - CACTUS
+  - MAGMA_BLOCK
+  - CAMP_FIRE
+  - SOUL_CAMPFIRE
+  - POWDER_SNOW
+  - VOID_AIR
+  - CAVE_AIR
+  - BUBBLE_COLUMN
